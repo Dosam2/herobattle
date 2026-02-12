@@ -9,14 +9,22 @@ public class HeroPlayerController : MonoBehaviour
 
     private VirtualJoystick virtualJoystick;
     private Vector3 moveDirection;
+    private bool isDead;
 
     private void Start()
     {
         virtualJoystick = FindAnyObjectByType<VirtualJoystick>();
+
+        // 플레이어 사망 이벤트 등록
+        Damageable hp = GetComponent<Damageable>();
+        if (hp != null)
+            hp.OnDeath += OnPlayerDeath;
     }
 
     private void Update()
     {
+        if (isDead) return;
+
         HandleInput();
         Move();
     }
@@ -62,5 +70,32 @@ public class HeroPlayerController : MonoBehaviour
             targetRotation,
             rotationSpeed * Time.deltaTime
         );
+    }
+
+    private void OnPlayerDeath()
+    {
+        isDead = true;
+
+        // 게임 매니저에 알림
+        if (GameManager.Instance != null)
+            GameManager.Instance.PlayerDied();
+
+        // 조이스틱 영역 숨김
+        if (virtualJoystick != null)
+            virtualJoystick.gameObject.SetActive(false);
+
+        // 비주얼 비활성화
+        MeshRenderer[] renderers = GetComponentsInChildren<MeshRenderer>();
+        foreach (var r in renderers) r.enabled = false;
+
+        // 콜라이더 비활성화
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+
+        // 자동 공격 비활성화
+        PlayerAutoAttack autoAttack = GetComponent<PlayerAutoAttack>();
+        if (autoAttack != null) autoAttack.enabled = false;
+
+        Debug.Log("[Player] 사망 - 관전 모드로 전환");
     }
 }
