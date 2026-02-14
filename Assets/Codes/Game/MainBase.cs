@@ -21,14 +21,39 @@ public class MainBase : MonoBehaviour
     private Transform currentTarget;
     private float lastAttackTime;
     private Material baseMaterial;
+    private bool? runtimeIsPlayerBase;
+    private int baseOwnerId = 0;
 
-    public bool IsPlayerBase => isPlayerBase;
+    public bool IsPlayerBase => runtimeIsPlayerBase ?? isPlayerBase;
+
+    public void SetIsPlayerBase(bool value) { runtimeIsPlayerBase = value; }
+    public void SetBaseOwnerId(int id) { baseOwnerId = id; }
+    public void SetDefenseRange(float range)
+    {
+        defenseRange = range;
+        if (rangeRenderer != null)
+            rangeRenderer.SetRadius(defenseRange / transform.localScale.x);
+    }
+    public void SetAttackParams(float damage, float cooldown) { attackDamage = damage; attackCooldown = cooldown; }
 
     private void Start()
     {
-        // HP 설정
-        damageable = gameObject.AddComponent<Damageable>();
-        damageable.SetMaxHP(baseHP);
+        if (gameObject.CompareTag("Enemy") && gameObject.name.Contains("EnemyBase"))
+        {
+            baseOwnerId = 0;
+            runtimeIsPlayerBase = false;
+        }
+        else if (gameObject.name.Contains("PlayerBase") && !gameObject.name.Contains("Player2"))
+        {
+            baseOwnerId = 1;
+        }
+
+        damageable = GetComponent<Damageable>();
+        if (damageable == null)
+        {
+            damageable = gameObject.AddComponent<Damageable>();
+            damageable.SetMaxHP(baseHP);
+        }
         damageable.OnDeath += OnBaseDestroyed;
 
         // HP 바
@@ -72,7 +97,8 @@ public class MainBase : MonoBehaviour
 
     private Transform FindClosestEnemy()
     {
-        Collider[] hits = Physics.OverlapSphere(transform.position, defenseRange);
+        float range = Mathf.Max(defenseRange, 1f);
+        Collider[] hits = Physics.OverlapSphere(transform.position, range);
         Transform closest = null;
         float closestDist = float.MaxValue;
 
@@ -80,25 +106,34 @@ public class MainBase : MonoBehaviour
         {
             if (hit.transform == transform) continue;
 
-            bool isEnemy = false;
+            UnitBase u = hit.GetComponent<UnitBase>();
+            if (u != null && u.OwnerPlayerID == baseOwnerId) continue;
+            if (baseOwnerId == 2 && hit.name.StartsWith("P2Unit")) continue;
 
-            if (isPlayerBase)
+            bool isEnemy = false;
+            if (baseOwnerId == 2)
             {
-                // 플레이어 기지는 "Enemy" 태그(적 기지 및 적 유닛)를 공격
+                isEnemy = (hit.name.Contains("Player") && !hit.name.Contains("Player2")) || hit.name == "PlayerBase";
+                if (!isEnemy && u != null && u.OwnerPlayerID == 1) isEnemy = true;
+            }
+            else if (baseOwnerId == 1)
+            {
+                isEnemy = hit.CompareTag("Enemy") || (u != null && u.OwnerPlayerID == 2);
+            }
+            else if (IsPlayerBase)
+            {
                 isEnemy = hit.CompareTag("Enemy");
             }
             else
             {
-                // 적 기지는 "Player" 태그 및 아군 UnitBase를 공격
-                if (hit.CompareTag("Player"))
-                {
-                    isEnemy = true;
-                }
+                // 싱글플레이 적 기지: Player·아군 유닛·플레이어 기지만 공격. Enemy 태그(적 유닛)는 절대 공격 안 함
+                if (hit.CompareTag("Enemy")) isEnemy = false;
+                else if (hit.CompareTag("Player")) isEnemy = true;
                 else
                 {
-                    UnitBase unit = hit.GetComponent<UnitBase>();
-                    if (unit != null && unit.IsAlly)
-                        isEnemy = true;
+                    if (u != null && u.IsAlly) isEnemy = true;
+                    MainBase mb = hit.GetComponent<MainBase>();
+                    if (mb != null && mb.IsPlayerBase) isEnemy = true;
                 }
             }
 
@@ -126,8 +161,9 @@ public class MainBase : MonoBehaviour
         Damageable hp = target.GetComponent<Damageable>();
         if (hp != null && hp.IsDead) return false;
 
+        float range = Mathf.Max(defenseRange, 1f);
         float dist = Vector3.Distance(transform.position, target.position);
-        return dist <= defenseRange;
+        return dist <= range;
     }
 
     private void AttackTarget(Transform target)
@@ -141,10 +177,21 @@ public class MainBase : MonoBehaviour
 
     private void OnBaseDestroyed()
     {
-        if (!isPlayerBase)
+        if (baseOwnerId == 2)
         {
-            // 적 기지 파괴 = 승리
-            Debug.Log("승리");
+            Debug.Log("승리 (적 기지 파괴)");
+            if (GameManager.Instance != null)
+                GameManager.Instance.EnemyBaseDestroyed();
+        }
+        else if (baseOwnerId == 1)
+        {
+            Debug.Log("패배 (아군 기지 파괴)");
+            if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.IsMultiplayerMode)
+                MultiplayerManager.Instance.EndMultiplayer();
+        }
+        else if (!IsPlayerBase || gameObject.name.Contains("EnemyBase"))
+        {
+            Debug.Log("승리 (적 기지 파괴)");
             if (GameManager.Instance != null)
                 GameManager.Instance.EnemyBaseDestroyed();
         }

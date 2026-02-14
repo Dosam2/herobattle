@@ -10,35 +10,54 @@ public class UnitBase : MonoBehaviour
     private Transform currentTarget;
     private Material unitMaterial;
 
-    // 팀
     private bool isAlly = true;
     public bool IsAlly => isAlly;
 
-    // 공격
+    private int ownerPlayerID = 1;
+    public int OwnerPlayerID => ownerPlayerID;
+
+    // 怨듦꺽 荑�
     private float lastAttackTime;
 
-    // 속도 버프
+    // ??? ????
     private float speedMultiplier = 1f;
     private float buffEndTime;
 
+    // ?? ??
+    [Header("Separation")]
+    [SerializeField] private float separationRadius = 2f;
+    [SerializeField] private float separationForce = 2f;
+
+    // ? ?? ?? ???
+    [Header("Base Targeting")]
+    [SerializeField] private float baseDetectionRange = 15f; // ? ?? ?? ??
+
     public UnitType Type => unitType;
 
-    private Vector3 MoveDirection => isAlly ? Vector3.forward : Vector3.back;
+    private Vector3 MoveDirection
+    {
+        get
+        {
+            if (!isAlly) return Vector3.back;
+            return ownerPlayerID == 1 ? Vector3.forward : Vector3.back;
+        }
+    }
 
-    public void Initialize(UnitType type, bool ally = true)
+    public void Initialize(UnitType type, bool ally = true, int playerID = 1)
     {
         unitType = type;
         isAlly = ally;
+        ownerPlayerID = playerID;
         stats = UnitDatabase.GetStats(type);
 
-        // 크기 설정
+        // ??? ????
         transform.localScale = stats.scale;
 
-        // 태그: 적 유닛은 "Enemy" 태그를 받음
+        // ???: ?? ?????? "Enemy" ???? ????
         if (!isAlly)
             gameObject.tag = "Enemy";
 
-        // 비주얼 색상 - 적은 약간 더 어둡게
+        // ????? ???? - ???? ?? ?? ????
         Color baseColor = isAlly ? stats.unitColor : DarkenColor(stats.unitColor);
 
         MeshRenderer mr = GetComponent<MeshRenderer>();
@@ -49,7 +68,7 @@ public class UnitBase : MonoBehaviour
             mr.material = unitMaterial;
         }
 
-        // 전방 표시기
+        // ???? ????
         GameObject indicator = GameObject.CreatePrimitive(PrimitiveType.Cube);
         indicator.name = "FrontIndicator";
         indicator.transform.SetParent(transform, false);
@@ -60,17 +79,17 @@ public class UnitBase : MonoBehaviour
         indicatorMat.color = isAlly ? Color.white : Color.red;
         indicator.GetComponent<MeshRenderer>().material = indicatorMat;
 
-        // Damageable 컴포넌트
+        // Damageable ???????
         damageable = gameObject.AddComponent<Damageable>();
         damageable.SetMaxHP(stats.maxHP);
         damageable.OnDeath += OnUnitDeath;
 
-        // HP 바
+        // HP ??
         GameObject hpObj = new GameObject($"HPBar_{type}");
         hpBar = hpObj.AddComponent<HPBar>();
         hpBar.Initialize(transform);
 
-        // 시야 렌더링
+        // ??? ??????
         GameObject visionObj = new GameObject("VisionRange");
         visionObj.transform.SetParent(transform, false);
         float groundY = -(stats.scale.y * 0.5f) + 0.05f;
@@ -85,10 +104,10 @@ public class UnitBase : MonoBehaviour
             vc
         );
 
-        // 목표 기지를 향해 향하도록 회전
+        // ??? ?????? ???? ??????? ???
         transform.rotation = Quaternion.LookRotation(MoveDirection, Vector3.up);
 
-        // GameManager에 등록
+        // GameManager?? ???
         if (GameManager.Instance != null)
             GameManager.Instance.RegisterUnit(this);
     }
@@ -105,19 +124,25 @@ public class UnitBase : MonoBehaviour
         if (damageable != null && damageable.IsDead) return;
         if (stats == null) return;
 
-        // 포탑 등 HP 감소 지속 처리
+        // ??? ?? HP ???? ???? ???
         if (stats.hpDecayPerSecond > 0f)
         {
             damageable.TakeDamage(stats.hpDecayPerSecond * Time.deltaTime);
             if (damageable.IsDead) return;
         }
 
-        // 속도 버프 만료
+        // ??? ???? ????
         if (speedMultiplier > 1f && Time.time >= buffEndTime)
             speedMultiplier = 1f;
 
-        // 타겟 찾기
+        // ?? ??: ?? ? ? ? ? ?? ?? ??? ? ??? ??
         currentTarget = FindTargetInVision();
+
+        // ?? ? ?? ??, ? ??? ????? ? ?? ?? ???
+        if (currentTarget == null && isAlly)
+        {
+            currentTarget = FindEnemyBaseInRange();
+        }
 
         if (currentTarget != null)
         {
@@ -141,34 +166,27 @@ public class UnitBase : MonoBehaviour
 
             bool isValidTarget = false;
 
-            if (isAlly)
+            if (ownerPlayerID == 2)
             {
-                // 아군은 "Enemy" 태그를 가진 객체를 타겟으로 함
-                isValidTarget = hit.CompareTag("Enemy");
+                if (hit.CompareTag("Player") && !hit.name.Contains("Player2")) isValidTarget = true;
+                else if (hit.name.Contains("PlayerBase") && !hit.name.Contains("Player2")) isValidTarget = true;
+                else { var u = hit.GetComponent<UnitBase>(); if (u != null && u.OwnerPlayerID == 1) isValidTarget = true; }
+            }
+            else if (isAlly)
+            {
+                if (hit.CompareTag("Enemy") || hit.name.Contains("Player2")) isValidTarget = true;
+                else if (hit.name == "EnemyBase" || hit.name.Contains("Player2Base")) isValidTarget = true;
+                else { var u = hit.GetComponent<UnitBase>(); if (u != null && u.OwnerPlayerID == 2) isValidTarget = true; }
             }
             else
             {
-                // 적은 "Player" 태그를 가진 객체를 타겟으로 함
-                if (hit.CompareTag("Player"))
-                {
-                    isValidTarget = true;
-                }
-                else
-                {
-                    // 또한 아군 UnitBase(동맹)를 타겟
-                    UnitBase otherUnit = hit.GetComponent<UnitBase>();
-                    if (otherUnit != null && otherUnit.IsAlly)
-                        isValidTarget = true;
-                    // 플레이어 기지(MainBase)도 타겟
-                    MainBase mb = hit.GetComponent<MainBase>();
-                    if (mb != null && mb.IsPlayerBase)
-                        isValidTarget = true;
-                }
+                if (hit.CompareTag("Player")) isValidTarget = true;
+                else { var u = hit.GetComponent<UnitBase>(); if (u != null && u.IsAlly) isValidTarget = true; var mb = hit.GetComponent<MainBase>(); if (mb != null && mb.IsPlayerBase) isValidTarget = true; }
             }
 
             if (!isValidTarget) continue;
 
-            // 타겟이 살아있는지 확인
+            // ????? ???????? ???
             Damageable targetHP = hit.GetComponent<Damageable>();
             if (targetHP != null && targetHP.IsDead) continue;
 
@@ -192,6 +210,36 @@ public class UnitBase : MonoBehaviour
         return closest;
     }
 
+    /// <summary>
+    /// ? ??? ?? ?? ?? ??? ?? (?? ??? ??)
+    /// </summary>
+    private Transform FindEnemyBaseInRange()
+    {
+        if (GameManager.Instance == null || !isAlly) return null;
+
+        Vector3 enemyBasePos = GameManager.Instance.GetEnemyBasePosition(ownerPlayerID);
+
+        Vector3 toBase = enemyBasePos - transform.position;
+        toBase.y = 0f;
+
+        float distToBase = toBase.magnitude;
+        bool baseIsAhead = ownerPlayerID == 1 ? enemyBasePos.z > transform.position.z : enemyBasePos.z < transform.position.z;
+
+        if (distToBase <= baseDetectionRange && baseIsAhead)
+        {
+            string targetName = ownerPlayerID == 1 ? "EnemyBase" : "PlayerBase";
+            GameObject go = GameObject.Find(targetName);
+            if (go != null)
+            {
+                Damageable baseHP = go.GetComponent<Damageable>();
+                if (baseHP != null && !baseHP.IsDead)
+                    return go.transform;
+            }
+        }
+
+        return null;
+    }
+
     private void ChaseAndAttack()
     {
         if (currentTarget == null) return;
@@ -202,6 +250,11 @@ public class UnitBase : MonoBehaviour
         if (dir.magnitude > stats.attackRange)
         {
             Vector3 moveDir = dir.normalized;
+            
+            // ?? ?? ??
+            Vector3 separation = CalculateSeparation();
+            moveDir = (moveDir + separation).normalized;
+            
             transform.position += moveDir * CurrentMoveSpeed * Time.deltaTime;
 
             if (moveDir.sqrMagnitude > 0.001f)
@@ -213,7 +266,7 @@ public class UnitBase : MonoBehaviour
         }
         else
         {
-            // 사거리 내일 때 공격
+            // ???? ???? ?? ????
             if (Time.time >= lastAttackTime + stats.attackCooldown)
             {
                 Damageable targetHP = currentTarget.GetComponent<Damageable>();
@@ -228,12 +281,62 @@ public class UnitBase : MonoBehaviour
 
     private void MoveTowardTargetBase()
     {
-        transform.position += MoveDirection * CurrentMoveSpeed * Time.deltaTime;
+        Vector3 moveDir = MoveDirection;
+        
+        // ?? ?? ??
+        Vector3 separation = CalculateSeparation();
+        moveDir = (moveDir + separation).normalized;
+        
+        transform.position += moveDir * CurrentMoveSpeed * Time.deltaTime;
 
         transform.rotation = Quaternion.RotateTowards(
             transform.rotation,
-            Quaternion.LookRotation(MoveDirection, Vector3.up),
+            Quaternion.LookRotation(moveDir, Vector3.up),
             360f * Time.deltaTime);
+    }
+
+    /// <summary>
+    /// ?? ???? ?? ?? ?? ?? (Separation force)
+    /// </summary>
+    private Vector3 CalculateSeparation()
+    {
+        Collider[] nearby = Physics.OverlapSphere(transform.position, separationRadius);
+        Vector3 separation = Vector3.zero;
+        int count = 0;
+
+        foreach (Collider col in nearby)
+        {
+            if (col.transform == transform) continue;
+
+            // ?? ?? ???? ?????? ?? ??
+            UnitBase otherUnit = col.GetComponent<UnitBase>();
+            bool isSameTeam = false;
+            
+            if (otherUnit != null)
+            {
+                isSameTeam = (otherUnit.IsAlly == isAlly);
+            }
+            else if (col.CompareTag("Player") && isAlly)
+            {
+                isSameTeam = true;
+            }
+
+            if (!isSameTeam) continue;
+
+            Vector3 toOther = transform.position - col.transform.position;
+            toOther.y = 0f;
+            float dist = toOther.magnitude;
+
+            if (dist > 0.01f && dist < separationRadius)
+            {
+                // ??? ????? ?? ???
+                float strength = separationForce * (1f - dist / separationRadius);
+                separation += toOther.normalized * strength;
+                count++;
+            }
+        }
+
+        return count > 0 ? separation / count : Vector3.zero;
     }
 
     public void ApplySpeedBuff(float multiplier, float duration)

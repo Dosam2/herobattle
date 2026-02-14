@@ -13,9 +13,11 @@ public class PlayerAutoAttack : MonoBehaviour
     private Transform currentTarget;
     private float lastAttackTime;
     private VisionRenderer rangeRenderer;
+    private int playerID = 1;
 
     private void Start()
     {
+        if (gameObject.name.Contains("Player2")) playerID = 2;
         CreateRangeVisual();
     }
 
@@ -52,7 +54,12 @@ public class PlayerAutoAttack : MonoBehaviour
         foreach (Collider hit in hits)
         {
             if (hit.transform == transform) continue;
-            if (!hit.CompareTag("Enemy")) continue;
+            bool isEnemy = playerID == 1 && (hit.CompareTag("Enemy") || hit.name.Contains("Player2"))
+                || playerID == 2 && (hit.name.Contains("Player") && !hit.name.Contains("Player2") || (hit.GetComponent<UnitBase>()?.OwnerPlayerID == 1));
+            if (!isEnemy) continue;
+
+            Damageable hp = hit.GetComponent<Damageable>();
+            if (hp != null && hp.IsDead) continue;
 
             float dist = Vector3.Distance(transform.position, hit.transform.position);
             if (dist < closestDist)

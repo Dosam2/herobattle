@@ -10,12 +10,23 @@ public class HeroPlayerController : MonoBehaviour
     private VirtualJoystick virtualJoystick;
     private Vector3 moveDirection;
     private bool isDead;
+    private int playerID = 1;
+    private bool isRemotePlayer = false; // 원격 플레이어(상대방)인지 여부
 
     private void Start()
     {
+        bool isP2 = gameObject.name.Contains("Player2");
+        if (isP2)
+            playerID = 2;
         virtualJoystick = FindAnyObjectByType<VirtualJoystick>();
 
-        // 플레이어 사망 이벤트 등록
+        // 멀티플레이 시: 게임 시작 후 MultiplayerManager가 SetRemotePlayer로 덮어씀
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.IsMultiplayerMode)
+        {
+            int localId = MultiplayerManager.Instance.LocalPlayerID;
+            isRemotePlayer = (playerID != localId);
+        }
+
         Damageable hp = GetComponent<Damageable>();
         if (hp != null)
             hp.OnDeath += OnPlayerDeath;
@@ -24,6 +35,7 @@ public class HeroPlayerController : MonoBehaviour
     private void Update()
     {
         if (isDead) return;
+        if (isRemotePlayer) return; // 원격 플레이어는 NetworkSync가 위치를 관리
 
         HandleInput();
         Move();
@@ -34,10 +46,20 @@ public class HeroPlayerController : MonoBehaviour
         Vector2 keyboard = Vector2.zero;
         if (Keyboard.current != null)
         {
-            if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) keyboard.x -= 1f;
-            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) keyboard.x += 1f;
-            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) keyboard.y -= 1f;
-            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) keyboard.y += 1f;
+            if (playerID == 1)
+            {
+                if (Keyboard.current.aKey.isPressed) keyboard.x -= 1f;
+                if (Keyboard.current.dKey.isPressed) keyboard.x += 1f;
+                if (Keyboard.current.sKey.isPressed) keyboard.y -= 1f;
+                if (Keyboard.current.wKey.isPressed) keyboard.y += 1f;
+            }
+            else
+            {
+                if (Keyboard.current.leftArrowKey.isPressed) keyboard.x -= 1f;
+                if (Keyboard.current.rightArrowKey.isPressed) keyboard.x += 1f;
+                if (Keyboard.current.downArrowKey.isPressed) keyboard.y -= 1f;
+                if (Keyboard.current.upArrowKey.isPressed) keyboard.y += 1f;
+            }
             keyboard = keyboard.normalized;
         }
 
@@ -55,6 +77,9 @@ public class HeroPlayerController : MonoBehaviour
         moveDirection = keyboardInput.sqrMagnitude > joystickInput.sqrMagnitude
             ? keyboardInput
             : joystickInput;
+
+        if (playerID == 2)
+            moveDirection = new Vector3(-moveDirection.x, 0f, -moveDirection.z);
     }
 
     private void Move()
@@ -72,17 +97,17 @@ public class HeroPlayerController : MonoBehaviour
         );
     }
 
+    /// <summary>멀티플레이 시 누가 로컬/원격인지 명시적으로 설정 (Start 타이밍 무관)</summary>
+    public void SetRemotePlayer(bool remote)
+    {
+        isRemotePlayer = remote;
+        if (!remote && virtualJoystick == null)
+            virtualJoystick = FindAnyObjectByType<VirtualJoystick>();
+    }
+
     private void OnPlayerDeath()
     {
         isDead = true;
-
-        // 게임 매니저에 알림
-        if (GameManager.Instance != null)
-            GameManager.Instance.PlayerDied();
-
-        // 조이스틱 영역 숨김
-        if (virtualJoystick != null)
-            virtualJoystick.gameObject.SetActive(false);
 
         // 비주얼 비활성화
         MeshRenderer[] renderers = GetComponentsInChildren<MeshRenderer>();
@@ -96,6 +121,20 @@ public class HeroPlayerController : MonoBehaviour
         PlayerAutoAttack autoAttack = GetComponent<PlayerAutoAttack>();
         if (autoAttack != null) autoAttack.enabled = false;
 
-        Debug.Log("[Player] 사망 - 관전 모드로 전환");
+        // 로컬 플레이어가 죽었을 때만 사망 모드 전환
+        if (!isRemotePlayer)
+        {
+            if (GameManager.Instance != null)
+                GameManager.Instance.PlayerDied();
+
+            if (virtualJoystick != null)
+                virtualJoystick.gameObject.SetActive(false);
+
+            Debug.Log("[Player] 로컬 플레이어 사망 - 사망 모드 전환");
+        }
+        else
+        {
+            Debug.Log("[Player] 상대 플레이어 사망");
+        }
     }
 }
