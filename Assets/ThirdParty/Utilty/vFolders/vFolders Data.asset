@@ -15,9 +15,14 @@ MonoBehaviour:
   folderDatas_byGuid:
     keys:
     - 8df9c6caa317b3e479d5fc17bebddc66
+    - 44aa2fc391d8c489fcb027e301f19d84
     values:
     - iconNameOrGuid: 
       colorIndex: 10
       isIconRecursive: 0
       isColorRecursive: 1
+    - iconNameOrGuid: BuildSettings.DedicatedServer On
+      colorIndex: 0
+      isIconRecursive: 1
+      isColorRecursive: 0
   bookmarks: []

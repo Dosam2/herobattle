@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist",
+    "module": "nodenext",
+    "lib": ["es2022"],
+    "target": "es2022",
+    "declaration": true,
+    "removeComments": true,
+    "noImplicitAny": false,
+    "experimentalDecorators": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "allowJs": true,
+    "strictNullChecks": false,
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": false,
+    "moduleResolution": "nodenext",
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

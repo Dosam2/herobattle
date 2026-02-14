@@ -36,15 +36,24 @@ public class VisionRenderer : MonoBehaviour
     // 투명 재질 생성: URP Unlit 셰이더를 사용해 투명 재질 속성을 설정합니다.
     private Material CreateTransparentMat(Color color)
     {
-        Material mat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-        mat.SetFloat("_Surface", 1f);
-        mat.SetFloat("_Blend", 0f);
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+        {
+            // ??: ?? ?? ???
+            shader = Shader.Find("Sprites/Default");
+        }
+        Material mat = new Material(shader);
+        mat.SetFloat("_Surface", 1f); // Transparent
+        mat.SetFloat("_Blend", 0f);   // Alpha
+        mat.SetFloat("_AlphaClip", 0f);
         mat.SetOverrideTag("RenderType", "Transparent");
         mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
         mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
         mat.SetInt("_ZWrite", 0);
-        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        mat.renderQueue = 3000;
         mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        mat.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+        mat.SetColor("_BaseColor", color);
         mat.color = color;
         return mat;
     }
@@ -88,7 +97,14 @@ public class VisionRenderer : MonoBehaviour
         meshFilter.mesh = visionMesh;
     }
 
-    // 렌더러 활성화/비활성화
+    /// <summary>?? ?? (?? ??? ? ?? ??? ???)</summary>
+    public void SetRadius(float newRadius)
+    {
+        if (Mathf.Approximately(radius, newRadius)) return;
+        radius = newRadius;
+        GenerateMesh();
+    }
+
     public void SetEnabled(bool on)
     {
         meshRenderer.enabled = on;

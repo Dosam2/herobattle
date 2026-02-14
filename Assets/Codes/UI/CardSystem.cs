@@ -22,6 +22,9 @@ public class CardSystem : MonoBehaviour
     [SerializeField] private Color ghostValidColor = new Color(0.3f, 1f, 0.3f, 0.5f);
     [SerializeField] private Color ghostInvalidColor = new Color(1f, 0.3f, 0.3f, 0.5f);
 
+    [Header("Multiplayer")]
+    [SerializeField] private int playerID = 1;
+
     // Alive 모드
     private UnitType[] cardSlots;
     private Button[] cardButtons;
@@ -63,6 +66,21 @@ public class CardSystem : MonoBehaviour
         { UnitType.Rogue, "도적" },
         { UnitType.Turret, "포탑" }
     };
+
+    public void SetPlayerID(int id) { playerID = id; }
+
+    /// <summary>한글 지원 폰트 반환 (Android/Editor 공용)</summary>
+    private static Font GetKoreanFont(int size)
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Android 시스템 기본 폰트 (CJK 포함)
+        return Font.CreateDynamicFontFromOSFont("sans-serif", size);
+#else
+        Font f = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (f != null) return f;
+        return Font.CreateDynamicFontFromOSFont("Arial", size);
+#endif
+    }
 
     private void Start()
     {
@@ -146,12 +164,12 @@ public class CardSystem : MonoBehaviour
         deadCardContainer = new GameObject("DeadContainer");
         deadCardContainer.transform.SetParent(uiParent, false);
         RectTransform deadRect = deadCardContainer.AddComponent<RectTransform>();
-        // 컴팩트: 하단 중앙, 높이 50px
+        // 컴팩트: 하단 중앙, 높이 55px (Android 제스처 영역 회피를 위해 위로 올림)
         deadRect.anchorMin = new Vector2(0.1f, 0f);
         deadRect.anchorMax = new Vector2(0.9f, 0f);
         deadRect.pivot = new Vector2(0.5f, 0f);
-        deadRect.anchoredPosition = new Vector2(0f, 10f);
-        deadRect.sizeDelta = new Vector2(0f, 50f);
+        deadRect.anchoredPosition = new Vector2(0f, 80f); // 80px 위로 올려서 네비게이션 바 회피
+        deadRect.sizeDelta = new Vector2(0f, 55f);
 
         deadCardSlots = new UnitType[cardSlotCount];
         deadCardImages = new Image[cardSlotCount];
@@ -196,7 +214,7 @@ public class CardSystem : MonoBehaviour
             deadCardTexts[i].fontSize = 18;
             deadCardTexts[i].color = Color.white;
             deadCardTexts[i].fontStyle = FontStyle.Bold;
-            deadCardTexts[i].font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            deadCardTexts[i].font = GetKoreanFont(18);
             deadCardTexts[i].horizontalOverflow = HorizontalWrapMode.Overflow;
             deadCardTexts[i].verticalOverflow = VerticalWrapMode.Overflow;
         }
@@ -217,7 +235,7 @@ public class CardSystem : MonoBehaviour
     {
         draggingCardIndex = cardIndex;
 
-        // 배치 영역 표시
+        RefreshPlacementZoneBounds();
         placementZone.SetActive(true);
         ghostUnit.SetActive(false);
 
@@ -245,7 +263,7 @@ public class CardSystem : MonoBehaviour
             ghostUnit.SetActive(true);
 
         Vector3 clamped = GameManager.Instance != null
-            ? GameManager.Instance.ClampToPlacementZone(worldPos)
+            ? GameManager.Instance.ClampToPlacementZone(worldPos, playerID)
             : worldPos;
 
         UnitStats stats = UnitDatabase.GetStats(deadCardSlots[draggingCardIndex]);
@@ -253,7 +271,7 @@ public class CardSystem : MonoBehaviour
         ghostUnit.transform.localScale = stats.scale;
 
         bool valid = GameManager.Instance != null
-            ? GameManager.Instance.IsPositionInPlacementZone(worldPos)
+            ? GameManager.Instance.IsPositionInPlacementZone(worldPos, playerID)
             : true;
         ghostMaterial.color = valid ? ghostValidColor : ghostInvalidColor;
     }
@@ -264,16 +282,16 @@ public class CardSystem : MonoBehaviour
 
         Vector3 worldPos = ScreenToGround(eventData.position);
         bool valid = worldPos != Vector3.zero
-            && (GameManager.Instance == null || GameManager.Instance.IsPositionInPlacementZone(worldPos));
+            && (GameManager.Instance == null || GameManager.Instance.IsPositionInPlacementZone(worldPos, playerID));
 
         if (valid && ghostUnit.activeSelf)
         {
             Vector3 clamped = GameManager.Instance != null
-                ? GameManager.Instance.ClampToPlacementZone(worldPos)
+                ? GameManager.Instance.ClampToPlacementZone(worldPos, playerID)
                 : worldPos;
 
             if (SpawnManager.Instance != null)
-                SpawnManager.Instance.SpawnUnitAtPosition(deadCardSlots[draggingCardIndex], clamped);
+                SpawnManager.Instance.SpawnUnitAtPosition(deadCardSlots[draggingCardIndex], clamped, playerID);
 
             // 해당 카드를 재무작위화
             UnitType[] allTypes = UnitDatabase.AllTypes;
@@ -297,21 +315,42 @@ public class CardSystem : MonoBehaviour
     // ============================================================
     // 배치 시각화
     // ============================================================
+    /// <summary>현재 playerID 기준으로 배치 존 위치/크기 갱신 (P2 사망 시 등)</summary>
+    private void RefreshPlacementZoneBounds()
+    {
+        float gm_minZ = -35f, gm_maxZ = 0f, gm_minX = -15f, gm_maxX = 15f;
+        if (GameManager.Instance != null)
+        {
+            gm_minZ = GameManager.Instance.GetPlacementMinZ(playerID);
+            gm_maxZ = GameManager.Instance.GetPlacementMaxZ(playerID);
+            gm_minX = GameManager.Instance.GetPlacementMinX(playerID);
+            gm_maxX = GameManager.Instance.GetPlacementMaxX(playerID);
+        }
+        if (placementZone != null)
+        {
+            float centerX = (gm_minX + gm_maxX) * 0.5f;
+            float centerZ = (gm_minZ + gm_maxZ) * 0.5f;
+            float sizeX = (gm_maxX - gm_minX) / 10f;
+            float sizeZ = (gm_maxZ - gm_minZ) / 10f;
+            placementZone.transform.position = new Vector3(centerX, 0.05f, centerZ);
+            placementZone.transform.localScale = new Vector3(sizeX, 1f, sizeZ);
+        }
+    }
+
     private void CreatePlacementVisuals()
     {
         float gm_minZ = -35f, gm_maxZ = 0f, gm_minX = -15f, gm_maxX = 15f;
         if (GameManager.Instance != null)
         {
-            gm_minZ = GameManager.Instance.PlacementMinZ;
-            gm_maxZ = GameManager.Instance.PlacementMaxZ;
-            gm_minX = GameManager.Instance.PlacementMinX;
-            gm_maxX = GameManager.Instance.PlacementMaxX;
+            gm_minZ = GameManager.Instance.GetPlacementMinZ(playerID);
+            gm_maxZ = GameManager.Instance.GetPlacementMaxZ(playerID);
+            gm_minX = GameManager.Instance.GetPlacementMinX(playerID);
+            gm_maxX = GameManager.Instance.GetPlacementMaxX(playerID);
         }
 
-        // 배치 영역 평면
         placementZone = GameObject.CreatePrimitive(PrimitiveType.Plane);
         placementZone.name = "PlacementZone";
-        Object.Destroy(placementZone.GetComponent<Collider>());
+        UnityEngine.Object.Destroy(placementZone.GetComponent<Collider>());
 
         float centerX = (gm_minX + gm_maxX) * 0.5f;
         float centerZ = (gm_minZ + gm_maxZ) * 0.5f;
@@ -350,13 +389,20 @@ public class CardSystem : MonoBehaviour
 
     private Vector3 ScreenToGround(Vector2 screenPos)
     {
-        Camera cam = Camera.main;
+        Camera cam = playerID == 2 ? GetPlayer2Camera() : null;
+        if (cam == null) cam = Camera.main;
         if (cam == null) return Vector3.zero;
         Ray ray = cam.ScreenPointToRay(screenPos);
         Plane ground = new Plane(Vector3.up, Vector3.zero);
         if (ground.Raycast(ray, out float dist))
             return ray.GetPoint(dist);
         return Vector3.zero;
+    }
+
+    private Camera GetPlayer2Camera()
+    {
+        GameObject go = GameObject.Find("Player2Camera");
+        return go != null ? go.GetComponent<Camera>() : null;
     }
 
     // ============================================================
@@ -400,7 +446,7 @@ public class CardSystem : MonoBehaviour
         labelText.fontSize = 16;
         labelText.color = Color.white;
         labelText.fontStyle = FontStyle.Bold;
-        labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        labelText.font = GetKoreanFont(16);
         labelText.horizontalOverflow = HorizontalWrapMode.Overflow;
         labelText.verticalOverflow = VerticalWrapMode.Overflow;
 
@@ -444,7 +490,7 @@ public class CardSystem : MonoBehaviour
         uiText.fontSize = 24;
         uiText.color = Color.white;
         uiText.fontStyle = FontStyle.Bold;
-        uiText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        uiText.font = GetKoreanFont(24);
         uiText.horizontalOverflow = HorizontalWrapMode.Overflow;
         uiText.verticalOverflow = VerticalWrapMode.Overflow;
 
@@ -516,7 +562,7 @@ public class CardSystem : MonoBehaviour
     private void OnAliveCardPressed(int index)
     {
         if (SpawnManager.Instance == null) return;
-        SpawnManager.Instance.SpawnUnit(cardSlots[index]);
+        SpawnManager.Instance.SpawnUnit(cardSlots[index], playerID);
         UnitType[] allTypes = UnitDatabase.AllTypes;
         cardSlots[index] = allTypes[Random.Range(0, allTypes.Length)];
         UpdateAliveCardVisual(index);
@@ -527,7 +573,7 @@ public class CardSystem : MonoBehaviour
         if (Time.time - skill1LastUsed < skill1Cooldown) return;
         skill1LastUsed = Time.time;
         if (GameManager.Instance != null)
-            GameManager.Instance.BuffAllUnitsSpeed(skill1SpeedMultiplier, skill1Duration);
+            GameManager.Instance.BuffAllUnitsSpeed(skill1SpeedMultiplier, skill1Duration, playerID);
     }
 
     private void OnSkill2Pressed()
@@ -535,14 +581,17 @@ public class CardSystem : MonoBehaviour
         if (Time.time - skill2LastUsed < skill2Cooldown) return;
         skill2LastUsed = Time.time;
 
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        GameObject player = playerID == 1 ? GameObject.FindGameObjectWithTag("Player") : GameObject.Find("Player2");
         if (player == null) return;
 
         Collider[] hits = Physics.OverlapSphere(player.transform.position, skill2Range);
         int hitCount = 0;
         foreach (Collider hit in hits)
         {
-            if (!hit.CompareTag("Enemy")) continue;
+            if (hit.transform == player.transform) continue;
+            bool isEnemy = playerID == 1 && (hit.CompareTag("Enemy") || hit.name.Contains("Player2"))
+                || playerID == 2 && (hit.name.Contains("Player") && !hit.name.Contains("Player2") || hit.GetComponent<UnitBase>()?.OwnerPlayerID == 1);
+            if (!isEnemy) continue;
             Damageable dmg = hit.GetComponent<Damageable>();
             if (dmg != null && !dmg.IsDead)
             {

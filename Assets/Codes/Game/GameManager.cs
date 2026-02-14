@@ -33,6 +33,13 @@ public class GameManager : MonoBehaviour
         }
         Instance = this;
 
+        if (MultiplayerManager.Instance == null)
+            gameObject.AddComponent<MultiplayerManager>();
+        if (ColyseusManager.Instance == null)
+            gameObject.AddComponent<ColyseusManager>();
+        if (NetworkSync.Instance == null)
+            gameObject.AddComponent<NetworkSync>();
+
         Screen.orientation = ScreenOrientation.Portrait;
         Screen.autorotateToPortrait = true;
         Screen.autorotateToPortraitUpsideDown = false;
@@ -54,27 +61,59 @@ public class GameManager : MonoBehaviour
         IsVictory = true;
         Debug.Log("승리");
         OnVictory?.Invoke();
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.IsMultiplayerMode)
+            MultiplayerManager.Instance.EndMultiplayer();
     }
 
-    public Vector3 GetAllyBaseSpawnPoint() => allyBaseSpawnPoint;
-    public Vector3 GetEnemyBasePosition() => enemyBasePosition;
+    public Vector3 GetAllyBaseSpawnPoint() => GetAllyBaseSpawnPoint(1);
+    public Vector3 GetEnemyBasePosition() => GetEnemyBasePosition(1);
 
-    // 배치 영역 경계
-    public float PlacementMinZ => placementZoneMinZ;
-    public float PlacementMaxZ => placementZoneMaxZ;
-    public float PlacementMinX => placementZoneMinX;
-    public float PlacementMaxX => placementZoneMaxX;
-
-    public bool IsPositionInPlacementZone(Vector3 pos)
+    public Vector3 GetAllyBaseSpawnPoint(int playerId)
     {
-        return pos.x >= placementZoneMinX && pos.x <= placementZoneMaxX
-            && pos.z >= placementZoneMinZ && pos.z <= placementZoneMaxZ;
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.IsMultiplayerMode)
+            return MultiplayerManager.Instance.GetPlayerBasePosition(playerId) + new Vector3(0f, -0.5f, playerId == 1 ? 5f : -5f);
+        return allyBaseSpawnPoint;
     }
 
-    public Vector3 ClampToPlacementZone(Vector3 pos)
+    public Vector3 GetEnemyBasePosition(int playerId)
     {
-        pos.x = Mathf.Clamp(pos.x, placementZoneMinX, placementZoneMaxX);
-        pos.z = Mathf.Clamp(pos.z, placementZoneMinZ, placementZoneMaxZ);
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.IsMultiplayerMode)
+            return MultiplayerManager.Instance.GetEnemyBasePosition(playerId);
+        return enemyBasePosition;
+    }
+
+    public float PlacementMinZ => GetPlacementMinZ(1);
+    public float PlacementMaxZ => GetPlacementMaxZ(1);
+    public float PlacementMinX => GetPlacementMinX(1);
+    public float PlacementMaxX => GetPlacementMaxX(1);
+
+    public float GetPlacementMinZ(int playerId)
+    {
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.IsMultiplayerMode)
+            return playerId == 1 ? -35f : 0f;
+        return placementZoneMinZ;
+    }
+    public float GetPlacementMaxZ(int playerId)
+    {
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.IsMultiplayerMode)
+            return playerId == 1 ? 0f : 35f;
+        return placementZoneMaxZ;
+    }
+    public float GetPlacementMinX(int playerId) => placementZoneMinX;
+    public float GetPlacementMaxX(int playerId) => placementZoneMaxX;
+
+    public bool IsPositionInPlacementZone(Vector3 pos) => IsPositionInPlacementZone(pos, 1);
+    public bool IsPositionInPlacementZone(Vector3 pos, int playerId)
+    {
+        return pos.x >= GetPlacementMinX(playerId) && pos.x <= GetPlacementMaxX(playerId)
+            && pos.z >= GetPlacementMinZ(playerId) && pos.z <= GetPlacementMaxZ(playerId);
+    }
+
+    public Vector3 ClampToPlacementZone(Vector3 pos) => ClampToPlacementZone(pos, 1);
+    public Vector3 ClampToPlacementZone(Vector3 pos, int playerId)
+    {
+        pos.x = Mathf.Clamp(pos.x, GetPlacementMinX(playerId), GetPlacementMaxX(playerId));
+        pos.z = Mathf.Clamp(pos.z, GetPlacementMinZ(playerId), GetPlacementMaxZ(playerId));
         return pos;
     }
 
@@ -90,19 +129,20 @@ public class GameManager : MonoBehaviour
         activeUnits.Remove(unit);
     }
 
-    public void BuffAllUnitsSpeed(float multiplier, float duration)
+    public void BuffAllUnitsSpeed(float multiplier, float duration) => BuffAllUnitsSpeed(multiplier, duration, 1);
+
+    public void BuffAllUnitsSpeed(float multiplier, float duration, int playerId)
     {
         activeUnits.RemoveAll(u => u == null);
         int buffCount = 0;
         foreach (UnitBase unit in activeUnits)
         {
-            // 아군 유닛만 버프 (태그로도 추가 확인)
-            if (unit.IsAlly && !unit.CompareTag("Enemy"))
+            if (unit.IsAlly && unit.OwnerPlayerID == playerId)
             {
                 unit.ApplySpeedBuff(multiplier, duration);
                 buffCount++;
             }
         }
-        Debug.Log($"[Skill] 아군 유닛 {buffCount}개에 이동속도 {multiplier}x 버프! ({duration}초)");
+        Debug.Log($"[Skill] P{playerId} 아군 유닛 {buffCount}개에 이동속도 {multiplier}x 버프! ({duration}초)");
     }
 }

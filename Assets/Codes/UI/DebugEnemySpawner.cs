@@ -12,7 +12,20 @@ public class DebugEnemySpawner : MonoBehaviour
     [SerializeField] private bool autoSpawnEnabled = false;
 
     private Button spawnButton;
+    private Button multiplayerButton;
+    private Text multiplayerLabel;
     private float lastAutoSpawn;
+
+    private static Font GetKoreanFont(int size)
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return Font.CreateDynamicFontFromOSFont("sans-serif", size);
+#else
+        Font f = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (f != null) return f;
+        return Font.CreateDynamicFontFromOSFont("Arial", size);
+#endif
+    }
 
     private void Start()
     {
@@ -34,7 +47,6 @@ public class DebugEnemySpawner : MonoBehaviour
         Canvas canvas = FindAnyObjectByType<Canvas>();
         if (canvas == null) return;
 
-        // 좌상단에 컨테이너
         GameObject container = new GameObject("DebugSpawnPanel");
         container.transform.SetParent(canvas.transform, false);
         RectTransform rect = container.AddComponent<RectTransform>();
@@ -42,14 +54,40 @@ public class DebugEnemySpawner : MonoBehaviour
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = new Vector2(10f, -10f);
-        rect.sizeDelta = new Vector2(120f, 80f);
+        rect.sizeDelta = new Vector2(120f, 130f);
+
+        // 멀티플레이 버튼
+        GameObject multiObj = new GameObject("MultiplayerBtn");
+        multiObj.transform.SetParent(container.transform, false);
+        RectTransform multiRect = multiObj.AddComponent<RectTransform>();
+        multiRect.anchorMin = new Vector2(0f, 0.7f);
+        multiRect.anchorMax = new Vector2(1f, 1f);
+        multiRect.offsetMin = Vector2.zero;
+        multiRect.offsetMax = Vector2.zero;
+        Image multiImg = multiObj.AddComponent<Image>();
+        multiImg.color = new Color(0.2f, 0.6f, 0.9f, 0.9f);
+        multiplayerButton = multiObj.AddComponent<Button>();
+        multiplayerButton.onClick.AddListener(ToggleMultiplayer);
+        GameObject multiTextObj = new GameObject("Label");
+        multiTextObj.transform.SetParent(multiObj.transform, false);
+        RectTransform mtRect = multiTextObj.AddComponent<RectTransform>();
+        mtRect.anchorMin = Vector2.zero;
+        mtRect.anchorMax = Vector2.one;
+        mtRect.offsetMin = Vector2.zero;
+        mtRect.offsetMax = Vector2.zero;
+        multiplayerLabel = multiTextObj.AddComponent<Text>();
+        multiplayerLabel.text = "1:1 PVP";
+        multiplayerLabel.alignment = TextAnchor.MiddleCenter;
+        multiplayerLabel.fontSize = 14;
+        multiplayerLabel.color = Color.white;
+        multiplayerLabel.font = GetKoreanFont(14);
 
         // 소환 버튼
         GameObject btnObj = new GameObject("EnemySpawnBtn");
         btnObj.transform.SetParent(container.transform, false);
         RectTransform btnRect = btnObj.AddComponent<RectTransform>();
-        btnRect.anchorMin = Vector2.zero;
-        btnRect.anchorMax = new Vector2(1f, 0.55f);
+        btnRect.anchorMin = new Vector2(0f, 0.35f);
+        btnRect.anchorMax = new Vector2(1f, 0.7f);
         btnRect.offsetMin = Vector2.zero;
         btnRect.offsetMax = Vector2.zero;
 
@@ -81,7 +119,7 @@ public class DebugEnemySpawner : MonoBehaviour
         uiText.fontSize = 16;
         uiText.color = Color.white;
         uiText.fontStyle = FontStyle.Bold;
-        uiText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        uiText.font = GetKoreanFont(16);
         uiText.horizontalOverflow = HorizontalWrapMode.Overflow;
         uiText.verticalOverflow = VerticalWrapMode.Overflow;
 
@@ -89,8 +127,8 @@ public class DebugEnemySpawner : MonoBehaviour
         GameObject toggleObj = new GameObject("AutoToggle");
         toggleObj.transform.SetParent(container.transform, false);
         RectTransform toggleRect = toggleObj.AddComponent<RectTransform>();
-        toggleRect.anchorMin = new Vector2(0f, 0.6f);
-        toggleRect.anchorMax = Vector2.one;
+        toggleRect.anchorMin = new Vector2(0f, 0f);
+        toggleRect.anchorMax = new Vector2(1f, 0.35f);
         toggleRect.offsetMin = Vector2.zero;
         toggleRect.offsetMax = Vector2.zero;
 
@@ -114,7 +152,7 @@ public class DebugEnemySpawner : MonoBehaviour
         tt.alignment = TextAnchor.MiddleCenter;
         tt.fontSize = 12;
         tt.color = Color.white;
-        tt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        tt.font = GetKoreanFont(12);
         tt.horizontalOverflow = HorizontalWrapMode.Overflow;
         tt.verticalOverflow = VerticalWrapMode.Overflow;
     }
@@ -152,5 +190,20 @@ public class DebugEnemySpawner : MonoBehaviour
             label.text = autoSpawnEnabled ? "자동: ON" : "자동: OFF";
 
         Debug.Log($"[Debug] 적 자동 소환: {(autoSpawnEnabled ? "ON" : "OFF")} (간격: {autoSpawnInterval}초)");
+    }
+
+    private void ToggleMultiplayer()
+    {
+        if (MultiplayerManager.Instance == null) return;
+        if (MultiplayerManager.Instance.IsMultiplayerMode)
+        {
+            MultiplayerManager.Instance.EndMultiplayer();
+            if (multiplayerLabel != null) multiplayerLabel.text = "1:1 PVP";
+        }
+        else
+        {
+            MultiplayerManager.Instance.StartMatchmaking();
+            if (multiplayerLabel != null) multiplayerLabel.text = "매칭중...";
+        }
     }
 }
