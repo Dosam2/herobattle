@@ -39,6 +39,8 @@ public class GameManager : MonoBehaviour
             gameObject.AddComponent<ColyseusManager>();
         if (NetworkSync.Instance == null)
             gameObject.AddComponent<NetworkSync>();
+        if (GetComponent<GameTimer>() == null)
+            gameObject.AddComponent<GameTimer>();
 
         Screen.orientation = ScreenOrientation.Portrait;
         Screen.autorotateToPortrait = true;

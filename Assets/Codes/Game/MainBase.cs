@@ -107,7 +107,7 @@ public class MainBase : MonoBehaviour
             if (hit.transform == transform) continue;
 
             UnitBase u = hit.GetComponent<UnitBase>();
-            if (u != null && u.OwnerPlayerID == baseOwnerId) continue;
+            if (u != null && u.IsAlly && u.OwnerPlayerID == baseOwnerId) continue;
             if (baseOwnerId == 2 && hit.name.StartsWith("P2Unit")) continue;
 
             bool isEnemy = false;
