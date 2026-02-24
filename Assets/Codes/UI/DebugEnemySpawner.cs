@@ -159,6 +159,9 @@ public class DebugEnemySpawner : MonoBehaviour
 
     private void SpawnRandomEnemy()
     {
+        var timer = GameManager.Instance?.GetComponent<GameTimer>();
+        if (timer != null) timer.StartTimer();
+
         if (SpawnManager.Instance != null)
             SpawnManager.Instance.SpawnRandomEnemy();
     }
